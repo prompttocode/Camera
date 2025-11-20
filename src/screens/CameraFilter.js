@@ -19,6 +19,9 @@ import {
   Image as SkiaImage,
   useImage,
   ColorMatrix,
+  Group,
+  rect,
+  fitbox,
 } from '@shopify/react-native-skia';
 import effects from '../components/effects';
 import Reanimated, { useAnimatedProps, useSharedValue } from 'react-native-reanimated';
@@ -28,11 +31,10 @@ import Slider from '@react-native-community/slider';
 Reanimated.addWhitelistedNativeProps({ zoom: true });
 const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera);
 
-
 const { width, height } = Dimensions.get('window');
 
 const CameraFilter = () => {
-  const [cameraPosition, setCameraPosition] = useState('front'); // Đổi tên cho rõ nghĩadđ
+  const [cameraPosition, setCameraPosition] = useState('front');
   const device = useCameraDevice(cameraPosition);
   const [hasPermission, setHasPermission] = useState(false);
   const [isScanning, setIsScanning] = useState(true);
@@ -40,14 +42,14 @@ const CameraFilter = () => {
   const [sunMode, setSunMode] = useState(false);
   const camera = useRef(null);
   const [selectedEffect, setSelectedEffect] = useState(effects[0]);
-  const [photoPath, setPhotoPath] = useState(null);
+  const [photoData, setPhotoData] = useState(null);
   const [brightness, setBrightness] = useState(0);
 
   const zoom = useSharedValue(device?.neutralZoom || 1);
   const startZoom = useSharedValue(device?.neutralZoom || 1);
   
   // Load ảnh chụp để review
-  const image = useImage(photoPath);
+  const image = useImage(photoData?.path);
 
   useEffect(() => {
     const requestPermissions = async () => {
@@ -79,7 +81,7 @@ const CameraFilter = () => {
         flash: flashMode,
         enableShutterSound: false,
       });
-      setPhotoPath(`file://${photo.path}`);
+      setPhotoData({ path: `file://${photo.path}` });
     } catch (e) {
       console.error(e);
     }
@@ -111,7 +113,7 @@ const CameraFilter = () => {
           StyleSheet.absoluteFill, 
           { backgroundColor: selectedEffect.overlayColor, zIndex: 1 }
         ]} 
-        pointerEvents="none" // Để vẫn bấm được vào camera bên dưới
+        pointerEvents="none"
       />
     );
   }, [selectedEffect]);
@@ -141,26 +143,24 @@ const CameraFilter = () => {
   if (!device || !hasPermission) return <View style={styles.container} />;
 
   // --- MÀN HÌNH REVIEW ẢNH (ĐÃ CHỤP) ---
-  // Ở đây dùng Skia để áp dụng Matrix Filter thật
-  if (photoPath && image) {
+  if (photoData && image) {
+    // Sử dụng fitbox để tự động scale và center image
+    const src = rect(0, 0, image.width(), image.height());
+    const dst = rect(0, 0, width, height);
+
     return (
       <View style={styles.container}>
         <Canvas style={StyleSheet.absoluteFill}>
-          <SkiaImage
-            image={image}
-            fit="cover"
-            x={0}
-            y={0}
-            width={width}
-            height={height}
-          >
-            <ColorMatrix matrix={finalMatrix} />
-          </SkiaImage>
+          <Group transform={fitbox("contain", src, dst)}>
+            <SkiaImage image={image} x={0} y={0} width={image.width()} height={image.height()}>
+              <ColorMatrix matrix={finalMatrix} />
+            </SkiaImage>
+          </Group>
         </Canvas>
         <View style={styles.overlay}>
           <TouchableOpacity 
             style={styles.backButton} 
-            onPress={() => setPhotoPath(null)}
+            onPress={() => setPhotoData(null)}
           >
             <Text style={styles.textBtn}>Chụp lại</Text>
           </TouchableOpacity>
@@ -169,7 +169,7 @@ const CameraFilter = () => {
           </TouchableOpacity>
         </View>
       </View>
-    )
+    );
   }
 
   // --- MÀN HÌNH CAMERA (LIVE) ---
@@ -195,43 +195,41 @@ const CameraFilter = () => {
       <View style={styles.uiLayer}>
         {/* Flash Button */}
         <View style={styles.flashBtn}>
-        <TouchableOpacity onPress={() => setFlashMode(f => f === 'off' ? 'on' : 'off')}>
-           <Image
-             source={require('../assets/images/flash.png')}
-             resizeMode='contain'
-             style={{width: 30, height: 30, tintColor: flashMode === 'on' ? 'yellow' : 'white'}}
-           />
-        </TouchableOpacity>
-        <View style={{height: 20}} />
-        <TouchableOpacity onPress={() => setSunMode(s => !s)}>
-           <Image
-             source={require('../assets/images/sun.png')}
-             resizeMode='contain'
-             style={{width: 30, height: 30, tintColor: sunMode ? 'yellow' : 'white'}}
-           />
-        </TouchableOpacity>
+          <TouchableOpacity onPress={() => setFlashMode(f => f === 'off' ? 'on' : 'off')}>
+            <Image
+              source={require('../assets/images/flash.png')}
+              resizeMode='contain'
+              style={{width: 30, height: 30, tintColor: flashMode === 'on' ? 'yellow' : 'white'}}
+            />
+          </TouchableOpacity>
+          <View style={{height: 20}} />
+          <TouchableOpacity onPress={() => setSunMode(s => !s)}>
+            <Image
+              source={require('../assets/images/sun.png')}
+              resizeMode='contain'
+              style={{width: 30, height: 30, tintColor: sunMode ? 'yellow' : 'white'}}
+            />
+          </TouchableOpacity>
         </View>
 
         {/* Brightness Slider */}
-        {sunMode &&(
+        {sunMode && (
           <View style={styles.sliderContainer}>
             <TouchableOpacity style={{width:30,height:30}} onPress={()=>{setSunMode(!sunMode)}}>
-             <Image style={{width: 15, height: 15,tintColor:'yellow'}} source={require('../assets/images/arrowdown.png')}/> 
+              <Image style={{width: 15, height: 15,tintColor:'yellow'}} source={require('../assets/images/arrowdown.png')}/> 
             </TouchableOpacity>
-          
-          
-          <Slider
-            style={{width: '80%', height: 40}}
-            minimumValue={-1}
-            maximumValue={1}
-            value={brightness}
-            onValueChange={setBrightness}
-            minimumTrackTintColor="#FFFFFF"
-            maximumTrackTintColor="#000000"
-          />
-        </View>
+            
+            <Slider
+              style={{width: '80%', height: 40}}
+              minimumValue={-1}
+              maximumValue={1}
+              value={brightness}
+              onValueChange={setBrightness}
+              minimumTrackTintColor="#FFFFFF"
+              maximumTrackTintColor="#000000"
+            />
+          </View>
         )}
-        
 
         {/* Filter List */}
         <View style={styles.filterListContainer}>
@@ -296,7 +294,7 @@ const styles = StyleSheet.create({
   uiLayer: {
     flex: 1,
     justifyContent: 'flex-end',
-    zIndex: 3, // UI phải nằm trên Overlay
+    zIndex: 3,
   },
   flashBtn: {
     position: 'absolute', top: 50, right: 20,
@@ -313,7 +311,6 @@ const styles = StyleSheet.create({
   filterListContainer: {
     height: 60,
     backgroundColor: 'rgba(0,0,0,0.5)',
-
   },
   filterItem: {
     paddingHorizontal: 20,
