@@ -331,6 +331,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     backgroundColor:'rgba(255, 255, 255, 0.9)',
     paddingTop: 20,
+    height: '25%'
   },
   buttonTakePicture: {
     width: 80, height: 80,

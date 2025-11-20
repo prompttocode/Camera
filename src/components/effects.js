@@ -60,7 +60,8 @@ const effects = [
       -0.1, -0.2, 1.7, 0, 0,
       0, 0, 0, 1, 0
     ],
-    overlayColor: 'rgba(255, 50, 100, 0.8)'
+    overlayColor: 'rgba(150, 150, 150, 0.8)'
   },
+  
 ];
 export default effects;
