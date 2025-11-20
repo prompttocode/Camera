@@ -263,7 +263,11 @@ const CameraFilter = () => {
 
         {/* Controls */}
         <View style={styles.captureButtonContainer}>
-          <View style={{width: 50}} /> 
+          <View style={{width: 50, height: 50, justifyContent:'center', alignItems:'center'}}>
+            <TouchableOpacity style={{width:'100%', height:'100%',backgroundColor:'gray'}}>
+
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity
             style={styles.buttonTakePicture}
             onPress={onTakePicturePress}
@@ -278,7 +282,7 @@ const CameraFilter = () => {
              <Image
                source={require('../assets/images/camera.png')}
                resizeMode='contain'
-               style={{width: 30, height: 30, tintColor: 'white'}}
+               style={{width: 30, height: 30}}
              />
           </TouchableOpacity>
         </View>
@@ -326,7 +330,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-around',
     alignItems: 'center',
     paddingBottom: 40,
-    backgroundColor:'rgba(255, 255, 255, 0.9)',
+    backgroundColor:'rgba(255, 255, 255, 1)',
     paddingTop: 20,
     height: '20%'
   },
@@ -342,7 +346,6 @@ const styles = StyleSheet.create({
   },
   buttonSwitchCamera: {
     width: 50, height: 50,
-    backgroundColor: '#333',
     borderRadius: 25, justifyContent: 'center', alignItems: 'center'
   },
   overlay: {
