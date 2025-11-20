@@ -32,7 +32,7 @@ const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera);
 const { width, height } = Dimensions.get('window');
 
 const CameraFilter = () => {
-  const [cameraPosition, setCameraPosition] = useState('front'); // Đổi tên cho rõ nghĩa
+  const [cameraPosition, setCameraPosition] = useState('front'); // Đổi tên cho rõ nghĩadđ
   const device = useCameraDevice(cameraPosition);
   const [hasPermission, setHasPermission] = useState(false);
   const [isScanning, setIsScanning] = useState(true);
