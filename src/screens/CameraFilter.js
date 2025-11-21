@@ -39,6 +39,9 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Slider from '@react-native-community/slider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// THÊM IMPORT CHO VIDEO PLAYER
+import Video from 'react-native-video';
+
 Reanimated.addWhitelistedNativeProps({ zoom: true });
 const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera);
 
@@ -70,6 +73,10 @@ const CameraFilter = () => {
 
   const [savedPhotos, setSavedPhotos] = useState([]);
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
+
+  // THÊM STATE CHO VIDEO PLAYER
+  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [isVideoPlayerVisible, setIsVideoPlayerVisible] = useState(false);
 
   const zoom = useSharedValue(device?.neutralZoom || 1);
   const startZoom = useSharedValue(device?.neutralZoom || 1);
@@ -142,7 +149,7 @@ const CameraFilter = () => {
         }).start(() => {
           setShowExposureSlider(false);
         });
-      }, 3000);
+      }, 5000);
       
       return () => clearTimeout(timer);
     }
@@ -289,10 +296,27 @@ const CameraFilter = () => {
       setIsRecording(true);
       camera.current.startRecording({
         flash: flashMode,
-        onRecordingFinished: video => {
+        onRecordingFinished: async (video) => {
           console.log('Video recorded:', video.path);
           setIsRecording(false);
-          Alert.alert('Đã quay xong!', `Video được lưu tại: ${video.path}`);
+          
+          // Lưu video vào gallery giống như ảnh
+          const videoUri = `file://${video.path}`;
+          try {
+            const updatedPhotos = [videoUri, ...savedPhotos];
+            await AsyncStorage.setItem(
+              SAVED_PHOTOS_KEY,
+              JSON.stringify(updatedPhotos),
+            );
+            setSavedPhotos(updatedPhotos);
+            Alert.alert('Đã quay xong!', 'Video đã được lưu vào bộ sưu tập.', [
+              { text: 'OK' },
+              { text: 'Xem Gallery', onPress: () => setIsGalleryVisible(true) }
+            ]);
+          } catch (e) {
+            console.error('Failed to save video.', e);
+            Alert.alert('Lỗi', 'Không thể lưu video.');
+          }
         },
         onRecordingError: error => {
           console.error('Recording error:', error);
@@ -304,7 +328,7 @@ const CameraFilter = () => {
       console.error(e);
       setIsRecording(false);
     }
-  }, [flashMode]);
+  }, [flashMode, savedPhotos]);
   const onStopRecording = useCallback(async () => {
     if (camera.current == null) return;
     try {
@@ -433,21 +457,108 @@ const CameraFilter = () => {
               horizontal
               pagingEnabled
               keyExtractor={(_, index) => index.toString()}
-              renderItem={({ item }) => (
-                <Image
-                  source={{ uri: item }}
-                  style={styles.galleryImage}
-                  resizeMode="contain"
-                />
-              )}
+              renderItem={({ item, index }) => {
+                // Kiểm tra xem là video hay ảnh
+                const isVideo = item.includes('.mp4') || item.includes('.mov');
+                
+                return (
+                  <View style={styles.galleryItemContainer}>
+                    {isVideo ? (
+                      <View style={styles.videoContainer}>
+                        {/* VIDEO PREVIEW VỚI THUMBNAIL */}
+                        <Video
+                          source={{ uri: item }}
+                          style={styles.videoPreview}
+                          resizeMode="contain"
+                          paused={true} // Dừng video để làm thumbnail
+                          muted={true}
+                        />
+                        
+                        <View style={styles.videoOverlay}>
+                          <TouchableOpacity 
+                            style={styles.playButton}
+                            onPress={() => {
+                              setSelectedVideo(item);
+                              setIsVideoPlayerVisible(true);
+                            }}
+                          >
+                            <Image source={require('../assets/images/play.png')} style={{ width: 40, height: 40,tintColor:'black' }} />
+                          </TouchableOpacity>
+                          
+                          <Text style={styles.videoFileName}>
+                            {item.split('/').pop()}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Image
+                        source={{ uri: item }}
+                        style={styles.galleryImage}
+                        resizeMode="contain"
+                      />
+                    )}
+                    
+                    {/* Indicator cho ảnh/video */}
+                    <View style={styles.mediaTypeIndicator}>
+                      <Text style={styles.mediaTypeText}>
+                        {isVideo ? '📹' : '📷'} {index + 1}/{savedPhotos.length}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              }}
             />
           ) : (
             <View style={styles.emptyGallery}>
               <Text style={styles.emptyGalleryText}>
-                Chưa có ảnh nào được lưu.
+                Chưa có ảnh hoặc video nào được lưu.
               </Text>
             </View>
           )}
+        </View>
+      </Modal>
+
+      {/* VIDEO PLAYER MODAL */}
+      <Modal
+        animationType="fade"
+        transparent={false}
+        visible={isVideoPlayerVisible}
+        onRequestClose={() => setIsVideoPlayerVisible(false)}
+      >
+        <View style={styles.videoPlayerContainer}>
+          <TouchableOpacity
+            style={styles.videoPlayerCloseButton}
+            onPress={() => {
+              setIsVideoPlayerVisible(false);
+              setSelectedVideo(null);
+            }}
+          >
+            <Text style={styles.videoPlayerCloseText}>✕</Text>
+          </TouchableOpacity>
+
+          {selectedVideo && (
+            <Video
+              source={{ uri: selectedVideo }}
+              style={styles.fullScreenVideo}
+              resizeMode="contain"
+              controls={true} // Hiện controls play/pause/seek
+              paused={false} // Auto play
+              repeat={false}
+              onError={(error) => {
+                console.log('Video error:', error);
+                Alert.alert('Lỗi', 'Không thể phát video này.');
+              }}
+              onEnd={() => {
+                console.log('Video ended');
+              }}
+            />
+          )}
+          
+          <View style={styles.videoPlayerInfo}>
+            <Text style={styles.videoPlayerTitle}>
+              {selectedVideo ? selectedVideo.split('/').pop() : ''}
+            </Text>
+          </View>
         </View>
       </Modal>
 
@@ -854,5 +965,106 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+  },
+
+  // Thêm styles cho video trong gallery
+  galleryItemContainer: {
+    width: width,
+    height: height,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    position: 'relative',
+  },
+  videoPreview: {
+    width: width * 0.8,
+    height: height * 0.6,
+    backgroundColor: 'black',
+  },
+  videoOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  playButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  playButtonText: {
+    fontSize: 30,
+    marginLeft: 5, // Căn chỉnh icon play
+  },
+  videoFileName: {
+    position: 'absolute',
+    bottom: 20,
+    color: 'white',
+    fontSize: 12,
+    textAlign: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+  },
+  
+  // VIDEO PLAYER MODAL STYLES
+  videoPlayerContainer: {
+    flex: 1,
+    backgroundColor: 'black',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoPlayerCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoPlayerCloseText: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  fullScreenVideo: {
+    width: width,
+    height: height * 0.8,
+  },
+  videoPlayerInfo: {
+    position: 'absolute',
+    bottom: 50,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    padding: 15,
+    borderRadius: 10,
+  },
+  videoPlayerTitle: {
+    color: 'white',
+    fontSize: 14,
+    textAlign: 'center',
   },
 });
