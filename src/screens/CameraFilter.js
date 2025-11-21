@@ -38,6 +38,9 @@ import Reanimated, {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Slider from '@react-native-community/slider';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CameraRoll } from '@react-native-camera-roll/camera-roll';
+import { PermissionsAndroid, Platform } from 'react-native';
+import RNFS from 'react-native-fs';
 
 // THÊM IMPORT CHO VIDEO PLAYER
 import Video from 'react-native-video';
@@ -47,6 +50,46 @@ const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera);
 
 const { width, height } = Dimensions.get('window');
 const SAVED_PHOTOS_KEY = 'SAVED_PHOTOS_KEY';
+
+async function hasAndroidPermission() {
+  const getCheckPermissionPromise = () => {
+    if (Platform.Version >= 33) {
+      return Promise.all([
+        PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES),
+        PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO),
+      ]).then(
+        ([hasReadMediaImagesPermission, hasReadMediaVideoPermission]) =>
+          hasReadMediaImagesPermission && hasReadMediaVideoPermission,
+      );
+    } else {
+      return PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
+    }
+  };
+
+  const hasPermission = await getCheckPermissionPromise();
+  if (hasPermission) {
+    return true;
+  }
+  const getRequestPermissionPromise = () => {
+    if (Platform.Version >= 33) {
+      return PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
+        PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO,
+      ]).then(
+        (statuses) =>
+          statuses[PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES] ===
+            PermissionsAndroid.RESULTS.GRANTED &&
+          statuses[PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO] ===
+            PermissionsAndroid.RESULTS.GRANTED,
+      );
+    } else {
+      return PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE).then((status) => status === PermissionsAndroid.RESULTS.GRANTED);
+    }
+  };
+
+  return await getRequestPermissionPromise();
+}
+
 
 const CameraFilter = () => {
   const [cameraPosition, setCameraPosition] = useState('front');
@@ -98,6 +141,58 @@ const CameraFilter = () => {
     loadSavedPhotos();
   }, []);
 
+  const handleDownload = async (uri) => {
+    if (Platform.OS === 'android' && !(await hasAndroidPermission())) {
+      Alert.alert('Lỗi', 'Không có quyền truy cập vào thư viện ảnh.');
+      return;
+    }
+
+    let saveUri = uri;
+    let tempFile;
+
+    try {
+      if (uri.startsWith('data:image')) {
+        // It's a base64 image
+        const base64Data = uri.split('base64,')[1];
+        const fileExtension = uri.match(/data:image\/(.*?);/)[1];
+        tempFile = `${RNFS.CachesDirectoryPath}/${new Date().getTime()}.${fileExtension}`;
+        await RNFS.writeFile(tempFile, base64Data, 'base64');
+        saveUri = `file://${tempFile}`;
+      }
+
+      await CameraRoll.save(saveUri, { type: 'auto' });
+      Alert.alert('Thành công', 'Đã lưu vào thư viện ảnh.');
+
+    } catch (err) {
+      console.error('Save error:', err);
+      Alert.alert('Lỗi', 'Không thể lưu vào thư viện ảnh.');
+    } finally {
+      // Clean up the temporary file
+      if (tempFile) {
+        try {
+          await RNFS.unlink(tempFile);
+        } catch (unlinkErr) {
+          console.error('Failed to delete temp file:', unlinkErr);
+        }
+      }
+    }
+  };
+
+  const handleDelete = async (uri) => {
+    try {
+      const updatedPhotos = savedPhotos.filter((photo) => photo !== uri);
+      setSavedPhotos(updatedPhotos);
+      await AsyncStorage.setItem(
+        SAVED_PHOTOS_KEY,
+        JSON.stringify(updatedPhotos),
+      );
+      Alert.alert('Đã xóa', 'Ảnh/video đã được xóa khỏi bộ sưu tập.');
+    } catch (e) {
+      console.error('Failed to delete photo.', e);
+      Alert.alert('Lỗi', 'Không thể xóa ảnh/video.');
+    }
+  };
+  
   // Handle tap to focus
   const handleCameraTap = useCallback(async (event) => {
     if (camera.current == null) return;
@@ -503,6 +598,21 @@ const CameraFilter = () => {
                       <Text style={styles.mediaTypeText}>
                         {isVideo ? '📹' : '📷'} {index + 1}/{savedPhotos.length}
                       </Text>
+                    </View>
+
+                    <View style={styles.galleryButtonsContainer}>
+                      <TouchableOpacity
+                        style={styles.galleryButton}
+                        onPress={() => handleDownload(item)}
+                      >
+                        <Text style={styles.galleryButtonText}>Tải về</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.galleryButton}
+                        onPress={() => handleDelete(item)}
+                      >
+                        <Text style={styles.galleryButtonText}>Xóa</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );
@@ -1066,5 +1176,27 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 14,
     textAlign: 'center',
+  },
+
+  // Gallery Buttons
+  galleryButtonsContainer: {
+    position: 'absolute',
+    bottom: 80,
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingVertical: 15,
+  },
+  galleryButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 25,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  galleryButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
