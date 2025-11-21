@@ -375,9 +375,13 @@ const CameraFilter = () => {
       const snapshot = await canvasRef.current.makeImageSnapshot();
       if (snapshot) {
         const base64 = snapshot.encodeToBase64(ImageFormat.JPEG, 100);
-        const newPhotoUri = `data:image/jpeg;base64,${base64}`;
+        const fileName = `${new Date().getTime()}.jpeg`;
+        const path = `${RNFS.DocumentDirectoryPath}/${fileName}`;
 
         try {
+          await RNFS.writeFile(path, base64, 'base64');
+          const newPhotoUri = `file://${path}`;
+
           const updatedPhotos = [newPhotoUri, ...savedPhotos];
           await AsyncStorage.setItem(
             SAVED_PHOTOS_KEY,
