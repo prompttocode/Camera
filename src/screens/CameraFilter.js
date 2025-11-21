@@ -329,9 +329,17 @@ const CameraFilter = () => {
   useEffect(() => {
     const requestPermissions = async () => {
       const cameraPermission = await Camera.requestCameraPermission();
-      setHasPermission(cameraPermission === 'granted');
-      if (cameraPermission !== 'granted') {
-        Alert.alert('Lỗi', 'Không có quyền truy cập camera.');
+      const microphonePermission = await Camera.requestMicrophonePermission();
+      
+      const allPermissionsGranted =
+        cameraPermission === 'granted' && microphonePermission === 'granted';
+      setHasPermission(allPermissionsGranted);
+
+      if (!allPermissionsGranted) {
+        Alert.alert(
+          'Lỗi',
+          'Không có đủ quyền (camera và microphone) để ứng dụng hoạt động.',
+        );
       }
     };
     requestPermissions();
@@ -391,6 +399,7 @@ const CameraFilter = () => {
       setIsRecording(true);
       camera.current.startRecording({
         flash: flashMode,
+        audio: true,
         onRecordingFinished: async (video) => {
           console.log('Video recorded:', video.path);
           setIsRecording(false);
