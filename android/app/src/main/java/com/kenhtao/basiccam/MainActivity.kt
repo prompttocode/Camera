@@ -1,4 +1,4 @@
-package com.camerafilter
+package com.kenhtao.basiccam
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

@@ -1,4 +1,4 @@
-package com.camerafilter
+package com.kenhtao.basiccam
 
 import android.app.Application
 import com.facebook.react.PackageList
