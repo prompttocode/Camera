@@ -15,6 +15,8 @@ import {
   FlatList,
   Dimensions,
   Modal,
+  TouchableWithoutFeedback,
+  Animated,
 } from 'react-native';
 import {
   Camera,
@@ -59,6 +61,13 @@ const CameraFilter = () => {
   const [photoPath, setPhotoPath] = useState(null);
   const [brightness, setBrightness] = useState(0);
 
+  // Focus & Exposure states
+  const [focusPoint, setFocusPoint] = useState(null);
+  const [showExposureSlider, setShowExposureSlider] = useState(false);
+  const [exposure, setExposure] = useState(0);
+  const focusBoxOpacity = useRef(new Animated.Value(0)).current;
+  const exposureSliderOpacity = useRef(new Animated.Value(0)).current;
+
   const [savedPhotos, setSavedPhotos] = useState([]);
   const [isGalleryVisible, setIsGalleryVisible] = useState(false);
 
@@ -81,6 +90,64 @@ const CameraFilter = () => {
     };
     loadSavedPhotos();
   }, []);
+
+  // Handle tap to focus
+  const handleCameraTap = useCallback(async (event) => {
+    if (camera.current == null) return;
+
+    const { locationX, locationY } = event.nativeEvent;
+    const point = { x: locationX, y: locationY };
+    
+    setFocusPoint(point);
+    setShowExposureSlider(true);
+    
+    // Animate focus box
+    Animated.sequence([
+      Animated.timing(focusBoxOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(focusBoxOpacity, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setFocusPoint(null);
+    });
+
+    // Show exposure slider
+    Animated.timing(exposureSliderOpacity, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+
+    try {
+      await camera.current.focus(point);
+    } catch (error) {
+      console.log('Focus error:', error);
+    }
+  }, []);
+
+  // Hide exposure slider after delay
+  useEffect(() => {
+    if (showExposureSlider) {
+      const timer = setTimeout(() => {
+        Animated.timing(exposureSliderOpacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => {
+          setShowExposureSlider(false);
+        });
+      }, 3000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showExposureSlider]);
+
   const GridOverlay = useMemo(() => {
     if (!gridMode) return null;
 
@@ -103,6 +170,59 @@ const CameraFilter = () => {
       </View>
     );
   }, [gridMode]);
+
+  // Focus Box Component
+  const FocusBox = useMemo(() => {
+    if (!focusPoint) return null;
+
+    return (
+      <Animated.View
+        style={[
+          styles.focusBox,
+          {
+            left: focusPoint.x - 50,
+            top: focusPoint.y - 50,
+            opacity: focusBoxOpacity,
+          },
+        ]}
+        pointerEvents="none"
+      />
+    );
+  }, [focusPoint, focusBoxOpacity]);
+
+  // Exposure Slider Component - TĂNG SIZE VÀ ĐƠN GIẢN HÓA
+  const ExposureSlider = useMemo(() => {
+  if (!showExposureSlider) return null;
+
+  return (
+    <Animated.View
+      style={[
+        styles.exposureSliderContainer,
+        { opacity: exposureSliderOpacity }
+      ]}
+    >
+      
+      <Slider
+        style={styles.exposureSlider}
+        minimumValue={-2}
+        maximumValue={2}
+        value={exposure}
+        onValueChange={(value) => {
+          setExposure(value);
+        }}
+        minimumTrackTintColor="#FFD700"
+        maximumTrackTintColor="rgba(255,255,255,0.6)"
+        thumbStyle={styles.sliderThumb}
+        trackStyle={styles.sliderTrack}
+        onSlidingStart={() => console.log('Slider start')} // Debug
+        onSlidingComplete={(value) => console.log('Slider complete:', value)} // Debug
+      />
+      
+      
+      
+    </Animated.View>
+  );
+}, [showExposureSlider, exposure, exposureSliderOpacity]);
 
   useEffect(() => {
     const requestPermissions = async () => {
@@ -234,26 +354,28 @@ const CameraFilter = () => {
   }, [selectedEffect]);
 
   const BrightnessOverlay = useMemo(() => {
-    if (brightness === 0) return null;
+    const totalBrightness = brightness + exposure * 0.3;
+    if (totalBrightness === 0) return null;
     const backgroundColor =
-      brightness > 0
-        ? `rgba(255, 255, 255, ${brightness})`
-        : `rgba(0, 0, 0, ${-brightness})`;
+      totalBrightness > 0
+        ? `rgba(255, 255, 255, ${Math.min(totalBrightness, 0.5)})`
+        : `rgba(0, 0, 0, ${Math.min(-totalBrightness, 0.5)})`;
     return (
       <View
         style={[StyleSheet.absoluteFill, { backgroundColor, zIndex: 2 }]}
         pointerEvents="none"
       />
     );
-  }, [brightness]);
+  }, [brightness, exposure]);
 
   const finalMatrix = useMemo(() => {
     const matrix = [...selectedEffect.matrix];
-    matrix[4] += brightness;
-    matrix[9] += brightness;
-    matrix[14] += brightness;
+    const totalBrightness = brightness + exposure * 0.2;
+    matrix[4] += totalBrightness;
+    matrix[9] += totalBrightness;
+    matrix[14] += totalBrightness;
     return matrix;
-  }, [selectedEffect, brightness]);
+  }, [selectedEffect, brightness, exposure]);
 
   if (!device || !hasPermission) return <View style={styles.container} />;
 
@@ -328,25 +450,35 @@ const CameraFilter = () => {
       </Modal>
 
       {/* Camera View */}
-      <GestureDetector gesture={onPinchGestureEvent}>
-        <ReanimatedCamera
-          ref={camera}
-          style={StyleSheet.absoluteFill}
-          device={device}
-          photo={!videoMode}
-          video={videoMode}
-          codeScanner={codeScanner}
-          isActive={true}
-          torch={flashMode === 'on' ? 'on' : 'off'}
-          animatedProps={animatedProps}
-        />
-      </GestureDetector>
+      <View style={StyleSheet.absoluteFill}>
+        <GestureDetector gesture={onPinchGestureEvent}>
+          <ReanimatedCamera
+            ref={camera}
+            style={StyleSheet.absoluteFill}
+            device={device}
+            photo={!videoMode}
+            video={videoMode}
+            codeScanner={codeScanner}
+            isActive={true}
+            torch={flashMode === 'on' ? 'on' : 'off'}
+            animatedProps={animatedProps}
+            exposure={exposure}
+          />
+        </GestureDetector>
+      </View>
+
+      {/* Touch Handler - CHỈ Ở VÙNG CAMERA */}
+      <TouchableWithoutFeedback onPress={handleCameraTap}>
+        <View style={styles.touchableArea} />
+      </TouchableWithoutFeedback>
 
       {LiveFilterOverlay}
       {BrightnessOverlay}
       {GridOverlay}
+      {FocusBox}
+      {ExposureSlider}
 
-      <View style={styles.uiLayer}>
+      <View style={styles.uiLayer} pointerEvents="box-none">
         <View style={styles.flashBtn}>
           <TouchableOpacity
             onPress={() => setFlashMode(f => (f === 'off' ? 'on' : 'off'))}
@@ -400,7 +532,7 @@ const CameraFilter = () => {
         </View>
 
         {sunMode && (
-          <View style={styles.sliderContainer}>
+          <View style={styles.sliderContainer} pointerEvents="box-none">
             <TouchableOpacity
               style={{ width: 30, height: 30 }}
               onPress={() => {
@@ -424,7 +556,7 @@ const CameraFilter = () => {
           </View>
         )}
 
-        <View style={styles.filterListContainer}>
+        <View style={styles.filterListContainer} pointerEvents="box-none">
           <FlatList
             data={effects}
             horizontal
@@ -458,7 +590,7 @@ const CameraFilter = () => {
           />
         </View>
 
-        <View style={styles.captureButtonContainer}>
+        <View style={styles.captureButtonContainer} pointerEvents="box-none">
           {/* Gallery Thumbnail */}
           <View
             style={{
@@ -523,7 +655,19 @@ export default CameraFilter;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: 'black' },
-  uiLayer: { flex: 1, justifyContent: 'flex-end', zIndex: 3 },
+  touchableArea: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 200, // Để lại 200px cho UI controls ở dưới
+    zIndex: 1,
+  },
+  uiLayer: { 
+    flex: 1, 
+    justifyContent: 'flex-end', 
+    zIndex: 5, // Tăng z-index cao hơn touchableArea
+  },
   flashBtn: { position: 'absolute', top: 50, right: 20 },
   sliderContainer: {
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -558,7 +702,6 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor:'red'
   },
   buttonSwitchCamera: {
     width: 50,
@@ -626,5 +769,88 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     width: 50,
     height: 50,
+  },
+
+  // Grid Styles
+  gridContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 2,
+  },
+  gridLine: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+  },
+
+  // Focus & Exposure Styles
+  focusBox: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderWidth: 2,
+    borderColor: '#FFD700',
+    backgroundColor: 'transparent',
+    borderRadius: 4,
+    zIndex: 4,
+  },
+  exposureSliderContainer: {
+    position: 'absolute',
+    right: 20,
+    top: '35%',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 15,
+    zIndex: 10, // Tăng z-index cao hơn
+    minHeight: 250,
+    width: 60, // Tăng width
+    justifyContent: 'center',
+  },
+  exposureMax: {
+    color: '#FFD700',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  exposureMin: {
+    color: '#FFD700',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginTop: 10,
+  },
+  exposureSlider: {
+    width: 200, // Tăng width để dễ kéo
+    height: 40, // Tăng height
+    transform: [{ rotate: '-90deg' }],
+  },
+  sliderThumb: {
+    backgroundColor: '#FFD700',
+    width: 20, // Tăng size thumb
+    height: 20,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  sliderTrack: {
+    height: 6, // Tăng thickness của track
+    borderRadius: 3,
+  },
+  exposureValue: {
+    color: '#FFD700',
+    fontSize: 14,
+    marginTop: 15,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
 });
