@@ -353,29 +353,31 @@ const CameraFilter = () => {
     );
   }, [selectedEffect]);
 
+  // Thay đổi BrightnessOverlay - CHỈ ÁP DỤNG BRIGHTNESS, KHÔNG ÁP DỤNG EXPOSURE
   const BrightnessOverlay = useMemo(() => {
-    const totalBrightness = brightness + exposure * 0.3;
-    if (totalBrightness === 0) return null;
+    // Chỉ dùng brightness, không dùng exposure
+    if (brightness === 0) return null;
     const backgroundColor =
-      totalBrightness > 0
-        ? `rgba(255, 255, 255, ${Math.min(totalBrightness, 0.5)})`
-        : `rgba(0, 0, 0, ${Math.min(-totalBrightness, 0.5)})`;
+      brightness > 0
+        ? `rgba(255, 255, 255, ${Math.min(brightness, 0.5)})`
+        : `rgba(0, 0, 0, ${Math.min(-brightness, 0.5)})`;
     return (
       <View
         style={[StyleSheet.absoluteFill, { backgroundColor, zIndex: 2 }]}
         pointerEvents="none"
       />
     );
-  }, [brightness, exposure]);
+  }, [brightness]); // Bỏ exposure khỏi dependencies
 
+  // Sửa finalMatrix - CHỈ ÁP DỤNG BRIGHTNESS CHO PHOTO PROCESSING
   const finalMatrix = useMemo(() => {
     const matrix = [...selectedEffect.matrix];
-    const totalBrightness = brightness + exposure * 0.2;
-    matrix[4] += totalBrightness;
-    matrix[9] += totalBrightness;
-    matrix[14] += totalBrightness;
+    // Chỉ dùng brightness cho matrix, exposure được xử lý bởi camera
+    matrix[4] += brightness;
+    matrix[9] += brightness;
+    matrix[14] += brightness;
     return matrix;
-  }, [selectedEffect, brightness, exposure]);
+  }, [selectedEffect, brightness]); // Bỏ exposure
 
   if (!device || !hasPermission) return <View style={styles.container} />;
 
@@ -462,7 +464,7 @@ const CameraFilter = () => {
             isActive={true}
             torch={flashMode === 'on' ? 'on' : 'off'}
             animatedProps={animatedProps}
-            exposure={exposure}
+            exposure={exposure} // Đây mới là exposure thật từ camera hardware
           />
         </GestureDetector>
       </View>
